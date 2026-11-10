@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>갈래말래 · Pleos Connect 프로토타입</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="viewport">
+  <div id="stage">
+
+    <!-- 홈 -->
+    <section class="screen active" id="screen-home">
+      <div class="home-bg"></div>
+      <div class="home-left">
+        <div class="logo-mark xl" data-logo></div>
+        <h1 class="brand">갈래말래</h1>
+        <p class="tagline">플랜 하나로, 일행 모두가 같은 길로.</p>
+        <ul class="pills">
+          <li><i data-icon="route"></i>내비 목적지 자동 등록</li>
+          <li><i data-icon="car"></i>차량별 위치 · 남은 시간</li>
+          <li><i data-icon="msg"></i>정차 요청 · 간편 메세지</li>
+        </ul>
+      </div>
+      <div class="home-right">
+        <button class="home-card primary" data-action="new-trip">
+          <span class="hc-icon"><i data-icon="route"></i></span>
+          <span class="hc-text">
+            <span class="hc-title">새 여정 만들기</span>
+            <span class="hc-sub">호스트 · 목적지를 순서대로 등록하고 일행을 초대해요</span>
+          </span>
+          <i data-icon="next" class="hc-arrow"></i>
+        </button>
+        <button class="home-card" data-action="join-trip">
+          <span class="hc-icon"><i data-icon="link"></i></span>
+          <span class="hc-text">
+            <span class="hc-title">초대 코드로 참여</span>
+            <span class="hc-sub">일행 차량 · 받은 코드나 링크로 같은 여정에 합류해요</span>
+          </span>
+          <i data-icon="next" class="hc-arrow"></i>
+        </button>
+        <div class="recent">
+          <div class="recent-title">최근 여정</div>
+          <div class="recent-row"><b>가평 MT</b><span>차량 4대 · 14명</span><span>2026.08.22</span></div>
+          <div class="recent-row"><b>추석 귀성 (대전)</b><span>차량 2대 · 7명</span><span>2026.09.24</span></div>
+        </div>
+      </div>
+      <div class="home-foot">Pleos Connect · 2560 × 1440 · 160dpi</div>
+    </section>
+
+    <!-- 여정 등록 -->
+    <section class="screen" id="screen-plan">
+      <header class="flow-head">
+        <button class="icon-btn" data-action="home"><i data-icon="back"></i></button>
+        <div class="flow-title">새 여정 만들기</div>
+        <ol class="stepper"><li class="on">일정 등록</li><li>일행 초대</li><li>출발</li></ol>
+        <div class="flow-clock" data-clock></div>
+      </header>
+      <div class="flow-body plan-body">
+        <div class="card qr-card">
+          <div class="card-label"><i data-icon="phone"></i>휴대폰으로 입력</div>
+          <div class="qr" data-qr="11"></div>
+          <p class="qr-desc">QR을 찍으면 휴대폰에서<br>일정 입력 페이지가 열려요</p>
+          <div class="field"><span>여정 이름</span><b>강릉 1박 2일 여행</b></div>
+        </div>
+        <div class="card input-card">
+          <div class="card-label"><i data-icon="list"></i>일정 등록</div>
+          <p class="hint">미리 적어둔 목적지 이름이나 지도 링크를 순서대로 붙여넣으세요.<br>AI가 읽고 여정을 만들어요.</p>
+          <textarea id="plan-input" spellcheck="false" placeholder="예)&#10;1. 안목해변 커피거리&#10;2. 초당 순두부&#10;3. https://naver.me/..."></textarea>
+          <div class="row">
+            <button class="btn ghost" data-action="pull-phone"><i data-icon="phone"></i>휴대폰에서 받아오기</button>
+            <button class="btn primary" data-action="parse"><i data-icon="spark"></i>AI로 여정 만들기</button>
+          </div>
+        </div>
+        <div class="card result-card">
+          <div class="card-label"><i data-icon="route"></i>인식된 여정 <span class="count" id="parse-count"></span></div>
+          <div id="parse-list" class="parse-list"></div>
+          <button class="btn primary wide" id="btn-to-invite" data-action="to-invite" disabled>다음 · 일행 초대<i data-icon="next"></i></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 일행 초대 -->
+    <section class="screen" id="screen-invite">
+      <header class="flow-head">
+        <button class="icon-btn" data-action="back-plan"><i data-icon="back"></i></button>
+        <div class="flow-title">새 여정 만들기</div>
+        <ol class="stepper"><li class="done">일정 등록</li><li class="on">일행 초대</li><li>출발</li></ol>
+        <div class="flow-clock" data-clock></div>
+      </header>
+      <div class="flow-body invite-body">
+        <div class="card invite-qr">
+          <div class="card-label"><i data-icon="users"></i>동승자 참여</div>
+          <div class="qr big" data-qr="23"></div>
+          <p class="qr-desc">같은 차에 탄 동승자는 QR을 찍어<br>모바일 웹으로 참여해요</p>
+        </div>
+        <div class="card invite-code">
+          <div class="card-label"><i data-icon="car"></i>다른 차량 초대</div>
+          <p class="hint">다른 차량 운전자에게 코드나 링크를 보내주세요.<br>참여하면 그 차량 내비에도 같은 목적지가 자동 등록돼요.</p>
+          <div class="code-box" id="invite-code">GLML-7K2Q</div>
+          <div class="link-box"><i data-icon="link"></i>gallae.link/j/7K2Q</div>
+          <div class="row">
+            <button class="btn ghost" data-action="copy-link"><i data-icon="link"></i>링크 복사</button>
+            <button class="btn ghost" data-action="send-kakao"><i data-icon="msg"></i>메세지로 보내기</button>
+          </div>
+          <div class="trip-preview" id="trip-preview"></div>
+        </div>
+        <div class="card invite-members">
+          <div class="card-label"><i data-icon="users"></i>참여 현황 <span class="count" id="join-count"></span></div>
+          <div id="member-groups" class="member-groups"></div>
+          <button class="btn primary wide" data-action="start-trip">여정 시작<i data-icon="next"></i></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 주행 -->
+    <section class="screen" id="screen-drive">
+      <div class="map-wrap">
+        <svg id="map" viewBox="0 0 1680 1440" preserveAspectRatio="xMidYMid slice">
+          <g id="map-bg"></g>
+          <g id="route">
+            <path id="route-casing"/>
+            <path id="route-line"/>
+            <path id="route-done"/>
+          </g>
+          <g id="pins"></g>
+          <g id="cars"></g>
+        </svg>
+
+        <div class="turn-card" id="turn-card">
+          <div class="turn-arrow" id="turn-arrow"></div>
+          <div class="turn-info">
+            <div class="turn-dist" id="turn-dist"></div>
+            <div class="turn-road" id="turn-road"></div>
+          </div>
+        </div>
+        <div class="sync-chip" id="sync-chip"><i data-icon="sync"></i><span>일행 3대 같은 목적지로 안내 중</span></div>
+
+        <div class="map-ctrls">
+          <button class="map-btn" data-action="zoom-in"><i data-icon="plus"></i></button>
+          <button class="map-btn" data-action="zoom-out"><i data-icon="minus"></i></button>
+          <button class="map-btn" data-action="recenter"><i data-icon="target"></i></button>
+        </div>
+
+        <div class="map-bottom">
+          <div class="speed"><b id="speed">0</b><span>km/h</span></div>
+          <div class="eta-bar">
+            <div><span>도착 예정</span><b id="eta-time">--:--</b></div>
+            <div><span>남은 시간</span><b id="eta-remain">-</b></div>
+            <div><span>남은 거리</span><b id="eta-dist">-</b></div>
+          </div>
+        </div>
+
+        <div id="banner" class="banner"></div>
+        <div id="toast" class="toast"></div>
+      </div>
+
+      <aside class="sidebar">
+        <div class="sb-head">
+          <div class="logo-mark sm" data-logo></div>
+          <div class="sb-trip">
+            <div class="sb-app">갈래말래</div>
+            <div class="sb-tripname">강릉 1박 2일 여행 · 차량 3대 · 9명</div>
+          </div>
+          <div class="sb-clock" data-clock></div>
+          <button class="icon-btn" data-action="show-qr"><i data-icon="qr"></i></button>
+        </div>
+
+        <div class="dest-card" id="dest-card">
+          <div class="dest-top"><span class="dest-step" id="dest-step"></span><span class="dest-kind">현재 목적지</span></div>
+          <div class="dest-name" id="dest-name"></div>
+          <div class="dest-addr" id="dest-addr"></div>
+          <div class="dest-stats">
+            <div><span>도착</span><b id="dest-eta"></b></div>
+            <div><span>남은 시간</span><b id="dest-remain"></b></div>
+            <div><span>남은 거리</span><b id="dest-dist"></b></div>
+          </div>
+          <div class="dest-actions">
+            <div class="dest-next"><span>다음</span><b id="dest-next"></b></div>
+            <button class="btn primary big" id="btn-next" data-action="next-leg">다음 일정<i data-icon="next"></i></button>
+          </div>
+        </div>
+
+        <nav class="tabs">
+          <button data-tab="cars" class="on"><i data-icon="car"></i>일행 차량</button>
+          <button data-tab="feed"><i data-icon="bell"></i>알림<span class="badge" id="feed-badge"></span></button>
+          <button data-tab="plan"><i data-icon="list"></i>일정</button>
+          <button data-tab="game"><i data-icon="game"></i>게임</button>
+        </nav>
+        <div class="tab-body">
+          <div class="tab-pane on" data-pane="cars" id="pane-cars"></div>
+          <div class="tab-pane" data-pane="feed" id="pane-feed"></div>
+          <div class="tab-pane" data-pane="plan" id="pane-plan"></div>
+          <div class="tab-pane" data-pane="game" id="pane-game"></div>
+        </div>
+
+        <div class="quick">
+          <div class="quick-label"><i data-icon="msg"></i>간편 메세지<span>일행 전체에게 전송</span></div>
+          <div class="quick-chips" id="quick-chips"></div>
+        </div>
+      </aside>
+    </section>
+
+    <!-- 여정 완료 -->
+    <section class="screen" id="screen-summary">
+      <div class="home-bg"></div>
+      <div class="summary">
+        <div class="logo-mark lg" data-logo></div>
+        <h2>모든 일정을 함께 마쳤어요</h2>
+        <p class="summary-sub">강릉 1박 2일 여행 · 차량 3대 · 9명</p>
+        <div class="summary-stats" id="summary-stats"></div>
+        <div class="summary-timeline" id="summary-timeline"></div>
+        <button class="btn primary big" data-action="home">처음으로</button>
+      </div>
+    </section>
+
+    <div id="modal-root"></div>
+  </div>
+</div>
+
+<!-- 시연용 컨트롤 (차량 화면 바깥) -->
+<div id="demo" class="demo">
+  <button class="demo-toggle" id="demo-toggle">시연 패널</button>
+  <div class="demo-body">
+    <div class="demo-title">시연 컨트롤 <small>동승자 · 타 차량 모바일 웹 이벤트 시뮬레이션</small></div>
+    <div class="demo-group">
+      <label>주행 속도</label>
+      <div class="demo-seg" id="demo-speed">
+        <button data-speed="1" class="on">1x</button><button data-speed="4">4x</button><button data-speed="12">12x</button>
+      </div>
+      <label class="demo-check"><input type="checkbox" id="demo-auto" checked> 자동 시나리오</label>
+    </div>
+    <div class="demo-group">
+      <label>동승자 / 타 차량</label>
+      <button data-demo="stop">2호차 서연 · 정차 요청</button>
+      <button data-demo="msg">3호차 지훈 · 메세지</button>
+      <button data-demo="ladder">동승자 웹 · 사다리타기</button>
+      <button data-demo="change">호스트 웹 · 일정 순서 변경</button>
+    </div>
+    <div class="demo-group">
+      <label>진행</label>
+      <button data-demo="arrive">현재 목적지 도착</button>
+      <button data-demo="reset">처음으로</button>
+    </div>
+    <div class="demo-keys">단축키 · Enter 확인 · V 음성 "응" · D 패널 숨기기</div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
