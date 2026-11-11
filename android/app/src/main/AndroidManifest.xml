@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-feature
+        android:name="android.hardware.type.automotive"
+        android:required="true" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 주행 상태 (CarUxRestrictions) -->
+    <uses-permission android:name="android.car.permission.CAR_DRIVING_STATE" />
+    <!-- Pleos 내비 경로 요청 · 검색 -->
+    <uses-permission android:name="pleos.car.permission.NAVI_ROUTE" />
+    <uses-permission android:name="pleos.car.permission.NAVI_ROUTE_SEARCH" />
+
+    <queries>
+        <intent>
+            <action android:name="ai.pleos.playground.intent.action.NAVI_START" />
+        </intent>
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.Gallaemallae">
+
+        <!-- 1:1 분할 · 2:0 전체 창 모두 지원 (화면 방향 고정 안 함) -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Gleo AI 음성 명령 -->
+            <intent-filter>
+                <action android:name="com.gallaemallae.app.action.VOICE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <!-- 주행 중에도 쓸 수 있도록 운전자 주의 분산 최적화 화면으로 선언 -->
+            <meta-data
+                android:name="distractionOptimized"
+                android:value="true" />
+        </activity>
+
+        <receiver
+            android:name=".platform.NotiActionReceiver"
+            android:exported="false" />
+    </application>
+</manifest>
