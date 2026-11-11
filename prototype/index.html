@@ -10,7 +10,15 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div id="viewport">
+<!-- 시연 화면 전환 (프로토타입 바깥) -->
+<nav class="viewbar" id="viewbar">
+  <button data-view="car"><i data-icon="nav"></i>내비게이션 화면</button>
+  <button data-view="web"><i data-icon="phone"></i>동승자 웹</button>
+  <button data-view="both"><i data-icon="grid"></i>함께 보기</button>
+</nav>
+
+<div id="viewport" data-view="car">
+  <div class="slot" id="slot-car">
   <div id="stage" data-theme="dark">
 
     <!-- ===== 시스템 UI (시뮬레이션) ===== -->
@@ -36,7 +44,7 @@
       <div class="dv-label">Driving view · 시스템</div>
     </aside>
 
-    <main id="windows" class="split">
+    <main id="windows">
       <section class="window" id="win-nav">
         <button class="winbar" data-sys="swap" aria-label="창 위치 바꾸기"></button>
         <div id="navapp">
@@ -47,6 +55,10 @@
             <g id="cars"></g>
           </svg>
           <div class="nav-tbt" id="nav-tbt"></div>
+          <div class="nav-zoom">
+            <button data-zoom="in" aria-label="지도 확대"><i data-icon="plus"></i></button>
+            <button data-zoom="out" aria-label="지도 축소"><i data-icon="minus"></i></button>
+          </div>
           <div class="nav-eta" id="nav-eta"></div>
           <div class="nav-tag">내비게이션 · 시스템 앱 (시뮬레이션)</div>
         </div>
@@ -176,12 +188,6 @@
                 <div class="dest-wps" id="dest-wps"></div>
                 <button class="btn primary wide big" id="btn-next" data-action="next-leg"></button>
               </div>
-
-              <div class="quick">
-                <div class="sec-title">간편 메세지 <span>일행 전체</span></div>
-                <div class="quick-chips" id="quick-chips"></div>
-                <div class="queue-note" id="queue-note"></div>
-              </div>
             </div>
 
             <div class="trip-side">
@@ -190,12 +196,20 @@
                 <button data-tab="feed"><i data-icon="bell"></i>알림<span class="badge" id="feed-badge"></span></button>
                 <button data-tab="plan"><i data-icon="list"></i>일정</button>
                 <button data-tab="game"><i data-icon="game"></i>게임<i data-icon="lock" class="tab-lock"></i></button>
+                <button data-tab="quick"><i data-icon="msg"></i>간편 메세지<span class="badge" id="queue-badge"></span></button>
               </nav>
               <div class="tab-body">
                 <div class="tab-pane scroll on" data-pane="cars" id="pane-cars"></div>
                 <div class="tab-pane scroll" data-pane="feed" id="pane-feed"></div>
                 <div class="tab-pane scroll" data-pane="plan" id="pane-plan"></div>
                 <div class="tab-pane scroll" data-pane="game" id="pane-game"></div>
+                <div class="tab-pane scroll" data-pane="quick" id="pane-quick">
+                  <div class="sec-title">일행 전체에게 보내요 <span>누르면 바로 전송</span></div>
+                  <div class="quick-chips" id="quick-chips"></div>
+                  <div class="queue-note" id="queue-note"></div>
+                  <div class="sec-title sent-title">최근 보낸 메세지</div>
+                  <div class="sent-list" id="sent-list"></div>
+                </div>
               </div>
             </div>
           </section>
@@ -222,6 +236,12 @@
           <div id="dialog-root"></div>
         </div>
       </section>
+
+      <!-- 앱 창 펼치기 / 접기 (접으면 내비만 보임) -->
+      <div class="app-slide" id="app-slide">
+        <button data-slide="in" aria-label="앱 보기" disabled><i data-icon="chevl"></i></button>
+        <button data-slide="out" aria-label="앱 접기"><i data-icon="chevr"></i></button>
+      </div>
     </main>
 
     <footer id="gnb" class="sys">
@@ -238,6 +258,70 @@
     <div id="sys-notify"></div>
     <div id="sys-toast"></div>
   </div>
+  </div>
+
+  <!-- ===== 동승자 모바일 웹 (QR로 접속) ===== -->
+  <div class="slot" id="slot-web">
+    <div class="phone" id="phone">
+      <div class="ph-screen-wrap">
+        <div class="ph-status"><span data-clock></span><span class="ph-island"></span><span class="ph-sys"><i data-icon="wifi"></i>LTE</span></div>
+        <div class="ph-url"><i data-icon="lock"></i>gallae.app/j/GLML-7K2Q</div>
+
+        <!-- 참여 (QR 접속 직후) -->
+        <section class="ph-view" id="ph-join">
+          <div class="pj-scroll">
+            <div class="pj-hero">
+              <div class="logo" data-logo></div>
+              <span>민준님이 여정에 초대했어요</span>
+              <h1>강릉 1박 2일 여행</h1>
+              <em>차량 3대 · 목적지 4곳</em>
+            </div>
+            <div class="pj-label">나는 누구인가요?</div>
+            <div class="pj-cars" id="pj-cars"></div>
+            <ul class="pj-notes">
+              <li><i data-icon="shield"></i>로그인 없이 닉네임만 공유돼요</li>
+              <li><i data-icon="clock"></i>여정이 끝나면 링크가 자동으로 만료돼요</li>
+            </ul>
+          </div>
+          <div class="pj-foot"><button class="pbtn primary" id="pj-go" data-pact="join" disabled>참여하기</button></div>
+        </section>
+
+        <!-- 여정 시작 전 / 종료 -->
+        <section class="ph-view" id="ph-wait">
+          <div class="pw-box" id="pw-box"></div>
+        </section>
+
+        <!-- 여정 진행 -->
+        <section class="ph-view" id="ph-main">
+          <header class="ph-head" id="ph-head"></header>
+          <div class="ph-panes">
+            <div class="ph-pane on" data-ppane="cars" id="pp-cars"></div>
+            <div class="ph-pane" data-ppane="stop" id="pp-stop"></div>
+            <div class="ph-pane chat" data-ppane="chat">
+              <div class="pc-list" id="pc-list"></div>
+              <div class="pc-compose">
+                <div class="pc-quick" id="pc-quick"></div>
+                <form class="pc-input" id="pc-form">
+                  <input id="pc-text" maxlength="60" placeholder="일행에게 메세지 보내기" autocomplete="off">
+                  <button class="pc-send" aria-label="보내기"><i data-icon="next"></i></button>
+                </form>
+              </div>
+            </div>
+            <div class="ph-pane" data-ppane="game" id="pp-game"></div>
+          </div>
+          <nav class="ph-tabs">
+            <button data-ptab="cars" class="on"><i data-icon="car"></i>일행</button>
+            <button data-ptab="stop"><i data-icon="rest"></i>정차 요청</button>
+            <button data-ptab="chat"><i data-icon="msg"></i>메세지<b class="ph-badge" id="ph-chat-badge"></b></button>
+            <button data-ptab="game"><i data-icon="game"></i>게임</button>
+          </nav>
+        </section>
+
+        <div class="ph-toast" id="ph-toast"></div>
+        <div class="ph-home"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- 시연용 컨트롤 (차량 화면 바깥 · 릴리스 빌드 제외) -->
@@ -247,8 +331,7 @@
     <div class="demo-title">시연 컨트롤 <small>릴리스 빌드에서는 제외</small></div>
     <div class="demo-group">
       <label>화면 · 시스템</label>
-      <div class="demo-seg" id="demo-window"><button data-win="split" class="on">세로 1:1</button><button data-win="full">가로 2:0</button></div>
-      <div class="demo-seg"><button data-sysdemo="swap">창 위치 바꾸기</button><button data-sysdemo="bg">앱 숨기기</button></div>
+      <div class="demo-seg"><button data-sysdemo="swap">창 위치 바꾸기</button><button data-sysdemo="slide" id="demo-slide">앱 접기</button></div>
       <div class="demo-seg" id="demo-theme"><button data-theme="dark" class="on">야간</button><button data-theme="light">주간</button></div>
     </div>
     <div class="demo-group">
@@ -265,6 +348,7 @@
       <button data-demo="ladder">동승자 웹 · 사다리타기</button>
       <button data-demo="change">호스트 웹 · 일정 순서 변경</button>
       <button data-demo="arrive">현재 목적지 도착</button>
+      <button data-demo="web-reset">동승자 웹 · 참여 화면부터 다시</button>
     </div>
     <div class="demo-group">
       <label>음성 (Gleo AI)</label>

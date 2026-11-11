@@ -18,6 +18,7 @@ const fmtMin = (m) => {
 const fmtKm = (km) => (km < 1 ? `${Math.max(10, Math.round(km * 100) * 10)}m` : `${km.toFixed(km < 10 ? 1 : 0)}km`);
 const rng = (seed) => () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
 const shuffle = (a) => { const b = [...a]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const fnv = (s) => { let h = 0x811c9dc5; for (const ch of s) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); };
 
 const ICON_PATHS = {
@@ -26,6 +27,12 @@ const ICON_PATHS = {
   msg: '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   next: '<path d="M5 12h13M13 6l6 6-6 6"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  minus: '<path d="M5 12h14"/>',
+  chevl: '<path d="M15 5l-7 7 7 7"/>',
+  chevr: '<path d="M9 5l7 7-7 7"/>',
+  cup: '<path d="M5 8h12v6a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5z"/><path d="M17 10h1.5a2.5 2.5 0 0 1 0 5H17M9 3v2M13 3v2"/>',
+  fuel: '<path d="M5 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16M3 21h14M7 8h6"/><path d="M15 10h2a2 2 0 0 1 2 2v5a1.5 1.5 0 0 0 3 0V8l-3-3"/>',
   back: '<path d="M19 12H6M11 6l-6 6 6 6"/>',
   phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
   list: '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>',
@@ -268,19 +275,33 @@ const NavView = {
     s += `<g transform="translate(${b.x},${b.y})"><path d="M0 0 C -10 -22 -34 -36 -34 -62 A 34 34 0 1 1 34 -62 C 34 -36 10 -22 0 0 Z" fill="#ff7a3d" stroke="#0d1016" stroke-width="5"/><circle cy="-62" r="13" fill="#0d1016"/></g>`;
     $('#pins').innerHTML = s;
   },
+  ZOOMS: [0.8, 1, 1.35, 1.8, 2.4],
+  zoomIdx: 1,
+  zoom: 1,
+  setZoom(d) {
+    this.zoomIdx = clamp(this.zoomIdx + d, 0, this.ZOOMS.length - 1);
+    $('[data-zoom="in"]').disabled = this.zoomIdx === this.ZOOMS.length - 1;
+    $('[data-zoom="out"]').disabled = this.zoomIdx === 0;
+  },
   frame() {
+    if (WM.hidden('nav')) return;
     const g = Nav.geo;
-    if (!g || WM.hidden('nav')) return;
-    const me = pointAt(g, Nav.progress);
-    $('#route-done').setAttribute('stroke-dasharray', `${Nav.progress * g.total} ${g.total * 2}`);
-    const car = $('#mycar');
-    if (car) { car.setAttribute('transform', `translate(${me.x.toFixed(1)},${me.y.toFixed(1)})`); car.querySelector('.heading').setAttribute('transform', `rotate(${me.ang + 90})`); }
+    const target = this.ZOOMS[this.zoomIdx];
+    this.zoom += (target - this.zoom) * 0.18;
+    if (Math.abs(target - this.zoom) < 0.002) this.zoom = target;
+    let me = { x: 840, y: 720 };
+    if (g) {
+      me = pointAt(g, Nav.progress);
+      $('#route-done').setAttribute('stroke-dasharray', `${Nav.progress * g.total} ${g.total * 2}`);
+      const car = $('#mycar');
+      if (car) { car.setAttribute('transform', `translate(${me.x.toFixed(1)},${me.y.toFixed(1)})`); car.querySelector('.heading').setAttribute('transform', `rotate(${me.ang + 90})`); }
+    }
     const box = $('#navapp').getBoundingClientRect();
     const aspect = box.width / Math.max(1, box.height);
-    const h = 1180, w = h * aspect;
-    const x = clamp(me.x - w / 2, Math.min(0, 1680 - w), Math.max(0, 1680 - w));
-    const y = clamp(me.y - h * 0.6, 0, 1440 - h);
-    $('#map').setAttribute('viewBox', `${x.toFixed(0)} ${y.toFixed(0)} ${w.toFixed(0)} ${h}`);
+    const h = 1180 / this.zoom, w = h * aspect;
+    const x = w >= 1680 ? (1680 - w) / 2 : clamp(me.x - w / 2, 0, 1680 - w);
+    const y = h >= 1440 ? (1440 - h) / 2 : clamp(me.y - h * 0.6, 0, 1440 - h);
+    $('#map').setAttribute('viewBox', `${x.toFixed(0)} ${y.toFixed(0)} ${w.toFixed(0)} ${h.toFixed(0)}`);
   },
   text() {
     if (!Nav.geo || WM.hidden('nav')) return;
@@ -388,21 +409,26 @@ const Server = {
   },
 };
 
-/* 창 관리 (1:1 / 2:0, 창 위치 변경, 포그라운드/백그라운드) */
+/* 창 관리 (내비 + 앱, 창 위치 변경, 앱 접기 = 내비 전체 화면) */
 const WM = {
-  mode: 'split', swapped: false, navFront: false,
+  swapped: false, collapsed: false,
   apply() {
     const w = $('#windows');
-    w.className = this.mode;
-    if (this.swapped) w.classList.add('swapped');
-    if (this.mode === 'full' && this.navFront) w.classList.add('nav-front');
+    w.classList.toggle('swapped', this.swapped && !this.collapsed);
+    w.classList.toggle('collapsed', this.collapsed);
+    $('[data-slide="in"]').disabled = !this.collapsed;
+    $('[data-slide="out"]').disabled = this.collapsed;
+    $('#demo-slide').textContent = this.collapsed ? '앱 펼치기' : '앱 접기';
     App.setVisible(!this.hidden('app'));
-    NavView.setup(); NavView.frame(); NavView.text();
+    NavView.text();
   },
-  hidden(which) {
-    if (this.mode === 'split') return false;
-    return which === 'app' ? this.navFront : !this.navFront;
+  slide(out) {
+    if (this.collapsed === out) return;
+    if (out) this.swapped = false;
+    this.collapsed = out;
+    this.apply();
   },
+  hidden(which) { return which === 'app' ? this.collapsed : false; },
 };
 
 /* =========================================================
@@ -468,6 +494,7 @@ function go(name) {
   $$('#app .screen').forEach((s) => s.classList.toggle('active', s.id === `screen-${name}`));
   updateParkedOnly();
   if (name === 'home') renderHome();
+  Web.render();
 }
 
 /* ---------- Dialog (Pleos Dialog 형태, 앱 창 내부) */
@@ -680,6 +707,7 @@ function openTrip(restore) {
   } else {
     S.leg = 0; S.feed = []; S.unread = 0; S.gameResults = [];
     S.stats = { msgs: 0, waypoints: 0, changes: 0, games: 0 };
+    Web.newTrip();
     pushFeed({ ic: 'users', color: CARS[2].color, title: '일행 3대 · 9명 참여', text: '같은 일정을 함께 안내해요' });
     S.unread = 0;
   }
@@ -820,10 +848,13 @@ function onServer(msg) {
       if (f) { f.text = `${[...S.routeAcks.cars].join(' · ')} 내비 적용 완료`; renderFeed(); }
       break;
     }
-    case 'msg':
-      pushFeed({ ic: 'msg', color: car.color, title: `${car.label} ${msg.name}`, text: `“${msg.text}”` });
-      SystemUI.notify({ type: 'profile', color: car.color, name: msg.name, title: `${car.label} ${msg.name}`, desc: limit(`“${msg.text}”`, 30), ms: 4000 });
+    case 'msg': {
+      const title = `${car.label} ${msg.name}${msg.web ? ' · 동승자 웹' : ''}`;
+      chatPush({ car, name: msg.name, text: msg.text });
+      pushFeed({ ic: 'msg', color: car.color, title, text: `“${esc(msg.text)}”` });
+      SystemUI.notify({ type: 'profile', color: car.color, name: msg.name, title, desc: limit(`“${esc(msg.text)}”`, 30), ms: 4000 });
       break;
+    }
     case 'stopRequest': incomingStop(car, msg); break;
     case 'gameResult': finishGame(msg.kind, msg.text, true); break;
     case 'planChange': {
@@ -858,14 +889,16 @@ function demoStop() {
 }
 
 function incomingStop(car, msg) {
-  if (!Nav.route || S.arrived) return;
+  const reply = (ok, text) => msg.reqId && Web.stopResult(msg.reqId, ok, text);
+  if (!Nav.route || S.arrived) { reply(false, '보류 · 지금은 안내 중이 아니에요'); return; }
   const poi = POI_DB[msg.poiId];
-  if (S.myProgress > 0.85) { SystemUI.toast('목적지가 가까워 정차 요청을 보류했어요', 'rest'); return; }
+  if (S.myProgress > 0.85) { SystemUI.toast('목적지가 가까워 정차 요청을 보류했어요', 'rest'); reply(false, '보류 · 목적지가 가까워요'); return; }
   const active = S.waypoints.filter((w) => !w.passed);
   const full = active.length >= 2;
   let item, noti;
   const finish = (state) => {
     item.state = state; S.pending = null; renderFeed(); noti && noti.close();
+    reply(state.ok, state.ok ? `수락 · ${poi.name}에 들러요` : '거절 · 다음 휴게소에서 쉬어요');
   };
   const accept = () => {
     if (item.state) return;
@@ -877,12 +910,13 @@ function incomingStop(car, msg) {
     if (!Server.send({ type: 'waypoint', poiId: msg.poiId })) S.queue.push({ type: 'waypoint', poiId: msg.poiId });
     SystemUI.toast(`경유지 추가 · ${poi.name}`, 'sync');
     renderQueue();
-    later(() => Server.deliver({ type: 'msg', car: msg.car, name: msg.name, text: '감사해요!!' }), 2500);
+    if (!msg.reqId) later(() => Server.deliver({ type: 'msg', car: msg.car, name: msg.name, text: '감사해요!!' }), 2500);
   };
   const decline = () => {
     if (item.state) return;
     finish({ ok: false, text: '거절 · “다음 휴게소에서 쉬어요” 전송' });
     Server.send({ type: 'msg', text: '다음 휴게소에서 쉬어요' });
+    chatPush({ car: CARS[0], name: CARS[0].driver, text: '다음 휴게소에서 쉬어요' });
     SystemUI.toast(`${msg.name}님께 거절 메세지를 보냈어요`, 'msg');
   };
   const desc = full ? `경유지가 가득 찼어요 (최대 2곳) · ${poi.name}` : `${msg.reason} · ${poi.name} · +${poi.extra}분`;
@@ -906,6 +940,8 @@ function sendQuick(text) {
   if (S.tab !== 'feed') { S.unread = Math.max(0, S.unread - 1); updateBadge(); }
   if (!ok) { S.queue.push({ type: 'msg', text, feedId: S.feed[0].id }); renderQueue(); SystemUI.toast('연결되면 보낼게요', 'wifioff'); return; }
   SystemUI.toast(`“${text}” 전송`, 'msg');
+  chatPush({ car: CARS[0], name: CARS[0].driver, text });
+  renderQueue();
   const c = CARS[1 + Math.floor(Math.random() * 2)];
   later(() => Server.deliver({ type: 'msg', car: anonCar(c.id), name: c.driver, text: REPLIES[Math.floor(Math.random() * REPLIES.length)] }), 2600);
 }
@@ -914,11 +950,22 @@ function flushQueue() {
   q.forEach((m) => {
     Server.send(m);
     if (m.feedId) { const f = S.feed.find((x) => x.id === m.feedId); if (f) f.state = { ok: true, text: '전송됨' }; }
+    if (m.type === 'msg') chatPush({ car: CARS[0], name: CARS[0].driver, text: m.text });
   });
   if (q.length) SystemUI.toast(`대기 중이던 ${q.length}건을 보냈어요`, 'sync');
   renderQueue(); renderFeed();
 }
-function renderQueue() { $('#queue-note').textContent = S.queue.length ? `전송 대기 ${S.queue.length}건 · 연결되면 보내요` : ''; }
+function renderQueue() {
+  const n = S.queue.length;
+  $('#queue-note').textContent = n ? `전송 대기 ${n}건 · 연결되면 보내요` : '';
+  const b = $('#queue-badge');
+  b.textContent = n;
+  b.classList.toggle('show', n > 0);
+  const sent = S.feed.filter((f) => f.title === '나 → 일행 전체').slice(0, 4);
+  $('#sent-list').innerHTML = sent.length
+    ? sent.map((f) => `<div class="sent-row">${icon('msg')}<span>${f.text}</span><em class="${f.state && !f.state.ok ? 'wait' : ''}">${f.state && !f.state.ok ? '전송 대기' : f.time}</em></div>`).join('')
+    : '<div class="empty">아직 보낸 메세지가 없어요</div>';
+}
 
 /* ---------- 일정 변경 */
 function reorderStop(from, to, by) {
@@ -932,13 +979,13 @@ function reorderStop(from, to, by) {
 }
 
 /* ---------- 게임 (정차 중에만) */
-function runLadder(source) {
-  if (S.game || S.driving) return;
-  S.game = 'ladder'; S.abortGame = false;
-  const names = ['민준', '서연', '지훈', '하은'];
-  const colors = ['#5b9dff', '#ff8a3d', '#3ad38f', '#c77dff'];
-  const prizes = shuffle(['커피 쏘기', '통과', '간식 담당', '통과']);
-  const n = 4, levels = 7, W = 760, top = 60, bottom = 330;
+const LADDER_COLORS = ['#5b9dff', '#ff8a3d', '#3ad38f', '#c77dff'];
+const LADDER_PRIZES = ['커피 쏘기', '통과', '간식 담당', '통과'];
+
+function buildLadder(names) {
+  const colors = LADDER_COLORS;
+  const prizes = shuffle(LADDER_PRIZES);
+  const n = names.length, levels = 7, W = 760, top = 60, bottom = 330;
   const xs = names.map((_, i) => 95 + i * ((W - 190) / (n - 1)));
   const ly = (l) => top + 20 + (l + 0.5) * ((bottom - top - 40) / levels);
   const rungs = [];
@@ -959,27 +1006,37 @@ function runLadder(source) {
   xs.forEach((x, i) => {
     svg += `<line x1="${x}" y1="${top}" x2="${x}" y2="${bottom}" stroke="var(--surface-tertiary)" stroke-width="6"/>`;
     svg += `<text x="${x}" y="40" text-anchor="middle" fill="${colors[i]}" font-size="30">${names[i]}</text>`;
-    svg += `<text x="${x}" y="378" text-anchor="middle" fill="var(--text-secondary)" font-size="28" id="prize-${i}">${prizes[i]}</text>`;
+    svg += `<text x="${x}" y="378" text-anchor="middle" fill="var(--text-secondary)" font-size="28" data-prize="${i}">${prizes[i]}</text>`;
   });
   rungs.forEach((row, l) => row.forEach((on, i) => { if (on) svg += `<line x1="${xs[i]}" y1="${ly(l)}" x2="${xs[i + 1]}" y2="${ly(l)}" stroke="var(--surface-tertiary)" stroke-width="6"/>`; }));
-  traces.forEach((t, i) => { svg += `<polyline class="trace" id="trace-${i}" points="${t.pts.map((p) => p.join(',')).join(' ')}" stroke="${colors[i]}" stroke-dasharray="${t.len}" stroke-dashoffset="${t.len}"/>`; });
+  traces.forEach((t, i) => { svg += `<polyline class="trace" data-trace="${i}" points="${t.pts.map((p) => p.join(',')).join(' ')}" stroke="${colors[i]}" stroke-dasharray="${t.len}" stroke-dashoffset="${t.len}"/>`; });
   svg += '</svg>';
-  $('#pane-game').innerHTML = `<div class="game-stage"><div class="game-stage-head">사다리타기 · 커피 내기<span>${source}</span></div><div class="ladder">${svg}</div></div>`;
-  const reveal = (i) => { const pr = $(`#prize-${traces[i].end}`); if (pr) { pr.setAttribute('fill', colors[i]); pr.textContent = `${prizes[traces[i].end]} · ${names[i]}`; } };
-  (async () => {
-    for (let i = 0; i < n; i++) {
-      const p = $(`#trace-${i}`);
-      if (!p || S.abortGame) break;
-      p.getBoundingClientRect();
-      p.style.transition = 'stroke-dashoffset .9s ease-in-out';
-      p.style.strokeDashoffset = 0;
-      await wait(950);
-      reveal(i);
-    }
-    const loser = traces.findIndex((t) => prizes[t.end] === '커피 쏘기');
-    const snack = traces.findIndex((t) => prizes[t.end] === '간식 담당');
-    finishGame('사다리타기', `${names[loser]} 커피 · ${names[snack]} 간식`);
-  })();
+  return { svg, traces, names, prizes };
+}
+
+async function playLadder(root, L, aborted) {
+  for (let i = 0; i < L.names.length; i++) {
+    const p = root.querySelector(`[data-trace="${i}"]`);
+    if (!p || aborted()) return null;
+    p.getBoundingClientRect();
+    p.style.transition = 'stroke-dashoffset .9s ease-in-out';
+    p.style.strokeDashoffset = 0;
+    await wait(950);
+    const pr = root.querySelector(`[data-prize="${L.traces[i].end}"]`);
+    if (pr) { pr.setAttribute('fill', LADDER_COLORS[i]); pr.textContent = `${L.prizes[L.traces[i].end]} · ${L.names[i]}`; }
+  }
+  const loser = L.traces.findIndex((t) => L.prizes[t.end] === '커피 쏘기');
+  const snack = L.traces.findIndex((t) => L.prizes[t.end] === '간식 담당');
+  return `${L.names[loser]} 커피 · ${L.names[snack]} 간식`;
+}
+
+function runLadder(source) {
+  if (S.game || S.driving) return;
+  S.game = 'ladder'; S.abortGame = false;
+  const L = buildLadder(['민준', '서연', '지훈', '하은']);
+  const root = $('#pane-game');
+  root.innerHTML = `<div class="game-stage"><div class="game-stage-head">사다리타기 · 커피 내기<span>${source}</span></div><div class="ladder">${L.svg}</div></div>`;
+  playLadder(root, L, () => S.abortGame).then((text) => text && finishGame('사다리타기', text));
 }
 
 async function runDraw() {
@@ -1011,6 +1068,7 @@ function finishGame(kind, text, remote = false) {
   S.stats.games++;
   S.gameResults.unshift({ text: `${kind} · ${text}`, time: hm() });
   pushFeed({ ic: 'trophy', color: '#ffc24a', title: `${kind} 결과${remote ? ' · 동승자 웹' : ''}`, text });
+  Web.renderGame();
   if (remote) { renderGame(); return; }
   later(() => { S.game = null; renderGame(); }, 3000);
 }
@@ -1174,7 +1232,7 @@ function renderGame() {
       </div>${results}`;
 }
 
-function renderQuick() { $('#quick-chips').innerHTML = QUICK.map((q) => `<button class="qchip">${q}</button>`).join(''); }
+function renderQuick() { $('#quick-chips').innerHTML = QUICK.map((q) => `<button class="qchip" data-quick="${q}">${icon('msg')}${q}</button>`).join(''); }
 
 /* ---------- 일정 드래그 (정차 중) */
 function startDrag(e, handle) {
@@ -1222,6 +1280,321 @@ function startDrag(e, handle) {
 }
 
 /* =========================================================
+   PASSENGER WEB (동승자 모바일 웹 · QR로 접속, 내비 화면 없음)
+   ========================================================= */
+const CHAT = [];
+function chatPush(m) {
+  const item = { time: hm(), ...m };
+  CHAT.push(item);
+  if (CHAT.length > 80) CHAT.shift();
+  Web.onChat(item);
+}
+
+const WEB_QUICK = ['좋아요', '어디쯤이에요?', '배고파요', '천천히 오세요', '곧 도착해요'];
+const STOP_REASONS = [['화장실', 'user'], ['휴식', 'clock'], ['간식·식사', 'cup'], ['주유', 'fuel']];
+const DRAW_NAMES = ['민준', '지은', '하은', '서연', '도윤', '지훈', '수아', '태오', '유나'];
+
+const Web = {
+  me: null, car: null, pick: null, tab: 'cars', reqs: [], seq: 0, unread: 0,
+  reason: null, place: null, game: null, shown: null, stopSig: '', toastT: null,
+
+  view() {
+    if (!this.me) return 'join';
+    return S.screen === 'trip' ? 'main' : 'wait';
+  },
+  newTrip() {
+    CHAT.length = 0;
+    this.reqs = []; this.unread = 0; this.reason = null; this.place = null;
+    this.badge();
+  },
+  render() {
+    const v = this.view();
+    this.shown = v;
+    $$('#phone .ph-view').forEach((n) => n.classList.toggle('on', n.id === `ph-${v}`));
+    if (v === 'join') this.renderJoin();
+    else if (v === 'wait') this.renderWait();
+    else { this.renderHead(); this.renderCars(); this.renderStop(); this.renderChat(); this.renderGame(); }
+  },
+  tick() {
+    if (this.view() !== this.shown) { this.render(); return; }
+    if (this.shown !== 'main') return;
+    this.renderHead();
+    if (this.tab === 'cars') this.renderCars();
+    const sig = [S.leg, !!S.awaiting, S.arrived, !!Nav.route, S.waypoints.filter((w) => !w.passed).map((w) => w.name).join()].join('|');
+    if (sig !== this.stopSig) { this.stopSig = sig; this.renderStop(); }
+  },
+  setTab(t) {
+    this.tab = t;
+    $$('#phone [data-ptab]').forEach((b) => b.classList.toggle('on', b.dataset.ptab === t));
+    $$('#phone .ph-pane').forEach((p) => p.classList.toggle('on', p.dataset.ppane === t));
+    if (t === 'chat') { this.unread = 0; this.badge(); this.renderChat(); }
+    if (t === 'stop') this.renderStop();
+    if (t === 'cars') this.renderCars();
+  },
+  badge() { const b = $('#ph-chat-badge'); b.textContent = this.unread; b.classList.toggle('show', this.unread > 0); },
+  toast(title, text, chip) {
+    const t = $('#ph-toast');
+    t.innerHTML = `<span class="p-chip" style="background:${chip.color}">${chip.html}</span><div><b>${title}</b>${esc(text)}</div>`;
+    t.classList.add('show');
+    clearTimeout(this.toastT);
+    this.toastT = setTimeout(() => t.classList.remove('show'), 3000);
+  },
+
+  /* 참여 */
+  renderJoin() {
+    $('#pj-cars').innerHTML = CARS.map((c) => `<div class="pj-car">
+      <div class="pj-car-head"><span class="p-chip" style="background:${c.color}">${c.id}</span>${c.label}<em>운전 · ${c.driver}</em></div>
+      <div class="pj-names">${c.members.map((m) => (m === c.driver
+        ? `<button class="driver">${m} (운전)</button>`
+        : `<button data-pname="${m}" class="${this.pick === m ? 'on' : ''}">${m}</button>`)).join('')}</div>
+    </div>`).join('');
+    const go = $('#pj-go');
+    go.disabled = !this.pick;
+    go.textContent = this.pick ? `${this.pick} 님으로 참여하기` : '이름을 골라 주세요';
+  },
+  join() {
+    if (!this.pick) return;
+    this.me = this.pick;
+    this.car = CARS.find((c) => c.members.includes(this.me));
+    S.joined.add(this.me);
+    if (S.screen === 'invite') renderMembers();
+    SystemUI.toast(`${this.me}님이 동승자 웹으로 참여했어요`, 'phone');
+    chatPush({ sys: true, text: `${this.car.label} ${this.me}님이 참여했어요` });
+    this.setTab('cars');
+    this.render();
+  },
+  leave() {
+    this.me = null; this.car = null; this.pick = null; this.reqs = []; this.game = null;
+    this.render();
+  },
+
+  /* 시작 전 · 종료 */
+  renderWait() {
+    const done = S.screen === 'summary';
+    $('#pw-box').innerHTML = done
+      ? `<span class="pw-ic">${icon('flag')}</span><b>모든 일정을 함께 마쳤어요</b><p>링크가 만료되고 위치 공유도 꺼졌어요</p>
+         <div class="pw-stats"><div><b>${S.stops.length}</b><span>방문 장소</span></div><div><b>${S.gameResults.length}</b><span>게임</span></div><div><b>${CHAT.filter((m) => !m.sys).length}</b><span>메세지</span></div></div>`
+      : `<span class="pw-ic">${icon('route')}</span><b>${this.me}님, 참여 완료!</b><p>호스트(1호차 ${CARS[0].driver})가 안내를 시작하면<br>일행 위치와 메세지를 볼 수 있어요</p>`;
+  },
+
+  /* 여정 헤더 (내비 화면 없이 목적지 · 도착 정보만) */
+  renderHead() {
+    const s = curStop();
+    if (!s) return;
+    const info = carInfo(this.car);
+    const arrived = info.progress >= 1 || (this.car.me && S.arrived);
+    const wps = S.waypoints.filter((w) => !w.passed);
+    $('#ph-head').innerHTML = `
+      <div class="ph-trip"><span class="logo">${LOGO}</span><div><b>강릉 1박 2일 여행</b><span>${this.car.label} · ${this.me} · 차량 3대</span></div>
+        ${this.car.me ? `<span class="ph-drive ${S.driving ? 'on' : ''}">${S.driving ? '주행 중' : '정차 중'}</span>` : ''}</div>
+      <div class="ph-dest">
+        <div class="ph-dest-top"><span class="step">일정 ${S.leg + 1}/${S.stops.length}</span>${S.awaiting ? '안내 대기 중' : arrived ? '도착했어요' : '가는 중'}</div>
+        <div class="ph-dest-name">${s.name}</div>
+        <div class="ph-dest-eta">
+          <div><span>도착 예정</span><b class="ok">${arrived ? '도착' : hm(info.etaMin)}</b></div>
+          <div><span>남은 시간</span><b>${arrived ? '-' : fmtMin(info.etaMin)}</b></div>
+          <div><span>남은 거리</span><b>${arrived ? '-' : fmtKm((1 - info.progress) * s.km)}</b></div>
+        </div>
+        ${wps.length ? `<div class="ph-dest-wps">${wps.map((w) => `<span>경유 · ${w.name}</span>`).join('')}</div>` : ''}
+      </div>`;
+  },
+
+  /* 일행 (타 차량 정보) */
+  renderCars() {
+    const s = curStop();
+    if (!s || !this.car) return;
+    const myP = carInfo(this.car).progress;
+    const stale = !Server.online && S.carsAt ? ` · ${hm((S.carsAt - Date.now()) / 60000)} 기준` : '';
+    $('#pp-cars').innerHTML = `
+      <div class="pcard pc-convoy">
+        <div class="pc-convoy-head"><span>일행 진행 상황${stale}</span><span>${s.name}</span></div>
+        <div class="pc-track">
+          <div class="fill" style="width:${myP * 100}%"></div>
+          ${CARS.map((c) => `<div class="dot" style="background:${c.color};left:${clamp(carInfo(c).progress, 0, 1) * 92 + 4}%">${c.id}</div>`).join('')}
+          <span class="flag">${icon('flag')}</span>
+        </div>
+      </div>
+      ${CARS.map((c) => {
+        const info = carInfo(c);
+        const arrived = info.progress >= 1;
+        const mine = c === this.car;
+        const late = !mine && info.progress < myP - 0.05;
+        const gap = (info.progress - myP) * s.km;
+        const rel = mine ? '내가 탄 차' : Math.abs(gap) < 0.05 ? '우리 차와 함께' : `우리 차보다 ${fmtKm(Math.abs(gap))} ${gap > 0 ? '앞' : '뒤'}`;
+        return `<div class="pc-car ${mine ? 'mine' : ''}">
+          <span class="p-chip" style="background:${c.color};width:36px;height:36px;border-radius:12px;font-size:16px">${c.id}</span>
+          <div class="pc-car-main">
+            <div class="pc-car-name">${c.label} · ${c.driver}${mine ? '<em>내 차</em>' : ''}</div>
+            <div class="pc-car-sub">${c.members.join(' · ')} · ${rel}</div>
+            <div class="pc-car-bar"><i style="width:${clamp(info.progress, 0, 1) * 100}%;background:${c.color}"></i></div>
+          </div>
+          <div class="pc-car-eta ${arrived ? 'arrived' : late ? 'late' : ''}"><b>${arrived ? '도착' : hm(info.etaMin)}</b><span>${arrived ? '목적지' : `${fmtMin(info.etaMin)} 남음`}</span></div>
+        </div>`;
+      }).join('')}`;
+  },
+
+  /* 정차 요청 */
+  renderStop() {
+    const s = curStop();
+    if (!s || !this.car) return;
+    const closed = !Nav.route || S.awaiting || S.arrived;
+    const pending = this.reqs.find((r) => !r.state);
+    const pool = s.km > 50 ? ['rest1', 'rest2', 'rest3'] : ['cvs1', 'cvs2', 'cvs3'];
+    const wps = S.waypoints.filter((w) => !w.passed);
+    let h = '';
+    if (pending) {
+      h += `<div class="ps-wait" style="margin-top:4px"><span class="spin"></span><div><b>${POI_DB[pending.poiId].name} · 정차 요청 중</b><span>호스트(1호차 ${CARS[0].driver})의 응답을 기다리고 있어요</span></div></div>`;
+    } else if (closed) {
+      h += `<div class="ps-closed">${icon('lock')}<b>지금은 요청할 수 없어요</b>${S.arrived ? '목적지에 도착했어요' : '안내가 시작되면 요청할 수 있어요'}</div>`;
+    } else {
+      h += `<div class="p-sec" style="margin-top:4px">왜 멈추고 싶나요?</div>
+        <div class="ps-reasons">${STOP_REASONS.map(([r, ic]) => `<button data-preason="${r}" class="${this.reason === r ? 'on' : ''}">${icon(ic)}${r}</button>`).join('')}</div>
+        <div class="p-sec">어디서 멈출까요? <span>경로 위 가까운 순</span></div>
+        <div class="ps-places">${pool.map((id) => {
+          const p = POI_DB[id];
+          return `<button data-pplace="${id}" class="${this.place === id ? 'on' : ''}">${icon('pin')}<div><b>${p.name}</b><span>${p.addr} · ${fmtKm(p.km)}</span></div><em>+${p.extra}분</em></button>`;
+        }).join('')}</div>
+        <button class="pbtn primary ps-send" data-pact="stop" ${this.reason && this.place ? '' : 'disabled'}>${icon('rest')}정차 요청 보내기</button>
+        <div class="ps-note">경유지는 최대 2곳 · 호스트가 수락하면 일행 내비에 추가돼요</div>`;
+    }
+    if (wps.length) h += `<div class="p-sec">들를 경유지 <span>${wps.length}/2</span></div><div class="ps-wps">${wps.map((w) => `<div>${icon('rest')}${w.name}<em>+${w.extra}분</em></div>`).join('')}</div>`;
+    if (this.reqs.length) {
+      h += `<div class="p-sec">내 요청</div><div class="ps-hist">${this.reqs.map((r) => {
+        const [label, note] = r.state ? r.state.text.split(' · ') : ['대기 중', '응답 대기'];
+        const cls = !r.state ? 'wait' : r.state.ok ? 'ok' : 'no';
+        return `<div><span><b>${POI_DB[r.poiId].name}</b>${r.reason} · ${r.time} · ${note}</span><em class="${cls}">${label}</em></div>`;
+      }).join('')}</div>`;
+    }
+    $('#pp-stop').innerHTML = h;
+  },
+  sendStop() {
+    if (!this.reason || !this.place || this.reqs.some((r) => !r.state)) return;
+    const r = { id: ++this.seq, poiId: this.place, reason: this.reason, time: hm(), state: null };
+    this.reqs.unshift(r);
+    this.reason = null; this.place = null;
+    this.renderStop();
+    Server.deliver({ type: 'stopRequest', car: anonCar(this.car.id), name: this.me, reason: r.reason, poiId: r.poiId, reqId: r.id });
+  },
+  stopResult(reqId, ok, text) {
+    const r = this.reqs.find((x) => x.id === reqId);
+    if (!r || r.state) return;
+    r.state = { ok, text };
+    this.toast(ok ? '정차 요청이 수락됐어요' : '정차 요청이 받아들여지지 않았어요', ok ? `${POI_DB[r.poiId].name} · 일행 내비에 경유지로 추가` : text,
+      { color: ok ? '#11935e' : '#d93c41', html: icon(ok ? 'check' : 'x') });
+    this.renderStop();
+  },
+
+  /* 메세지 */
+  renderChat() {
+    const list = $('#pc-list');
+    list.innerHTML = CHAT.length ? CHAT.map((m) => {
+      if (m.sys) return `<div class="pm sys"><div class="pm-bubble">${esc(m.text)}</div></div>`;
+      const mine = m.name === this.me;
+      return `<div class="pm ${mine ? 'mine' : ''}">
+        ${mine ? '' : `<span class="p-chip" style="background:${m.car.color}">${m.name[0]}</span>`}
+        <div class="pm-body">${mine ? '' : `<span class="pm-who">${m.car.label} · ${m.name}</span>`}<div class="pm-bubble">${esc(m.text)}</div></div>
+        <time>${m.time}</time>
+      </div>`;
+    }).join('') : '<div class="p-empty">아직 메세지가 없어요<br>일행에게 먼저 인사해 보세요</div>';
+    list.scrollTop = list.scrollHeight;
+    $('#pc-quick').innerHTML = WEB_QUICK.map((q) => `<button type="button" data-pq="${q}">${q}</button>`).join('');
+  },
+  onChat(m) {
+    if (this.view() !== 'main') return;
+    if (this.tab === 'chat') { this.renderChat(); return; }
+    if (m.sys || m.name === this.me) return;
+    this.unread++; this.badge();
+    this.toast(`${m.car.label} · ${m.name}`, m.text, { color: m.car.color, html: m.name[0] });
+  },
+  sendChat(text) {
+    text = text.trim();
+    if (!text || this.view() !== 'main') return;
+    Server.deliver({ type: 'msg', car: anonCar(this.car.id), name: this.me, text, web: true });
+    if (Math.random() < 0.6) {
+      const others = CARS.filter((c) => c !== this.car && !c.me);
+      const c = others[Math.floor(Math.random() * others.length)];
+      const who = c.members.find((m) => m !== c.driver) || c.driver;
+      later(() => Server.deliver({ type: 'msg', car: anonCar(c.id), name: who, text: REPLIES[Math.floor(Math.random() * REPLIES.length)] }), 2400);
+    }
+  },
+
+  /* 게임 (동승자는 주행 중에도 가능) */
+  renderGame() {
+    if (this.game || this.view() !== 'main') return;
+    $('#pp-game').innerHTML = `
+      <div class="p-sec" style="margin-top:4px">함께 할 게임 <span>결과는 차량 화면에도 떠요</span></div>
+      <div class="pg-cards">
+        <button data-pgame="ladder"><span class="gc-ic" style="background:#ffc24a2e;color:#d69600">${icon('ladder')}</span><b>사다리타기</b><span>커피 내기 · 4명</span></button>
+        <button data-pgame="draw"><span class="gc-ic" style="background:#5b9dff26;color:#2f6fe4">${icon('dice')}</span><b>뽑기</b><span>다음 구간 DJ · 9명</span></button>
+      </div>
+      <div class="p-sec">게임 결과 <span>일행 전체</span></div>
+      <div class="pg-res">${S.gameResults.length
+        ? S.gameResults.map((r) => `<div>${icon('trophy')}<span>${esc(r.text)}</span><em>${r.time}</em></div>`).join('')
+        : '<div class="p-empty" style="justify-content:center">아직 게임 결과가 없어요</div>'}</div>`;
+  },
+  async playGame(kind) {
+    if (this.game) return;
+    this.game = kind;
+    const root = $('#pp-game');
+    const aborted = () => this.view() !== 'main';
+    let text = null, label;
+    if (kind === 'ladder') {
+      label = '사다리타기';
+      const names = [...new Set([this.me, CARS[0].driver, CARS[1].driver, CARS[2].driver, '하은'])].slice(0, 4);
+      const L = buildLadder(names);
+      root.innerHTML = `<div class="pg-stage"><div class="pg-stage-head">사다리타기 · 커피 내기<span>${names.length}명</span></div><div class="ladder">${L.svg}</div><div class="pg-result" id="pg-result">사다리를 타는 중…</div></div>`;
+      text = await playLadder(root, L, aborted);
+    } else {
+      label = '뽑기';
+      const pick = Math.floor(Math.random() * DRAW_NAMES.length);
+      root.innerHTML = `<div class="pg-stage"><div class="pg-stage-head">뽑기 · 다음 구간 DJ<span>9명 중 1명</span></div>
+        <div class="draw-box" id="pg-draw">?</div><div class="draw-names">${DRAW_NAMES.map((n) => `<span data-n="${n}">${n}</span>`).join('')}</div><div class="pg-result" id="pg-result">뽑는 중…</div></div>`;
+      for (let k = 0; k < 10 && !aborted(); k++) {
+        const idx = (pick + k + 1) % DRAW_NAMES.length;
+        $('#pg-draw').textContent = DRAW_NAMES[idx];
+        $$('#pp-game .draw-names span').forEach((s) => s.classList.toggle('hit', s.dataset.n === DRAW_NAMES[idx]));
+        await wait(150);
+      }
+      if (!aborted()) {
+        $('#pg-draw').textContent = DRAW_NAMES[pick];
+        $('#pg-draw').classList.add('final');
+        $$('#pp-game .draw-names span').forEach((s) => s.classList.toggle('hit', s.dataset.n === DRAW_NAMES[pick]));
+        text = `다음 구간 DJ는 ${DRAW_NAMES[pick]}`;
+      }
+    }
+    if (text) {
+      $('#pg-result').textContent = `${text} · 일행에게 공유했어요`;
+      Server.deliver({ type: 'gameResult', kind: label, text });
+      await wait(2600);
+    }
+    this.game = null;
+    this.renderGame();
+  },
+};
+
+$('#phone').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-ptab]');
+  if (t) { Web.setTab(t.dataset.ptab); return; }
+  const n = e.target.closest('[data-pname]');
+  if (n) { Web.pick = n.dataset.pname; Web.renderJoin(); return; }
+  const a = e.target.closest('[data-pact]');
+  if (a) { if (a.dataset.pact === 'join') Web.join(); else if (a.dataset.pact === 'stop') Web.sendStop(); return; }
+  const r = e.target.closest('[data-preason]');
+  if (r) { Web.reason = r.dataset.preason; Web.renderStop(); return; }
+  const p = e.target.closest('[data-pplace]');
+  if (p) { Web.place = p.dataset.pplace; Web.renderStop(); return; }
+  const q = e.target.closest('[data-pq]');
+  if (q) { Web.sendChat(q.dataset.pq); return; }
+  const g = e.target.closest('[data-pgame]');
+  if (g) Web.playGame(g.dataset.pgame);
+});
+$('#pc-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  Web.sendChat($('#pc-text').value);
+  $('#pc-text').value = '';
+});
+
+/* =========================================================
    nav map geometry / background
    ========================================================= */
 function buildGeo(route) {
@@ -1251,7 +1624,7 @@ function pointAt(geo, f) {
 }
 function mapBackground() {
   const r = rng(42);
-  let s = '<rect width="1680" height="1440" style="fill:var(--map-bg)"/>';
+  let s = '<rect x="-2000" y="-1000" width="5680" height="3440" style="fill:var(--map-bg)"/>';
   for (let y = 0; y < 11; y++) for (let x = 0; x < 12; x++) {
     const v = r();
     const fill = v < 0.08 ? '--map-park' : v < 0.5 ? '--map-block2' : '--map-block';
@@ -1269,9 +1642,31 @@ function mapBackground() {
 /* =========================================================
    wiring
    ========================================================= */
+/* 시연 화면 전환: 차량(내비) · 동승자 웹 · 함께 보기 */
+const View = {
+  mode: ['car', 'web', 'both'].includes(localStorage.getItem('gallae-view')) ? localStorage.getItem('gallae-view') : 'car',
+  set(m) {
+    this.mode = m;
+    localStorage.setItem('gallae-view', m);
+    $('#viewport').dataset.view = m;
+    $$('#viewbar [data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === m));
+    fit();
+    Web.render();
+  },
+};
+$('#viewbar').addEventListener('click', (e) => { const b = e.target.closest('[data-view]'); if (b) View.set(b.dataset.view); });
+
 function fit() {
-  const s = Math.min(innerWidth / 2600, innerHeight / 1480);
-  $('#stage').style.setProperty('--s', s);
+  const PW = 412, PH = 876, gap = 40;
+  const W = innerWidth - 48, H = innerHeight - 112;
+  let s = Math.min(W / 2560, H / 1440);
+  let ps = Math.min(H / PH, W / PW, 1.3);
+  if (View.mode === 'both') {
+    ps = Math.min(H / PH, (W * 0.32) / PW, 1.1);
+    s = Math.min((W - PW * ps - gap) / 2560, H / 1440);
+  }
+  $('#viewport').style.setProperty('--s', s);
+  $('#viewport').style.setProperty('--ps', ps);
   S.scale = s;
   NavView.frame();
 }
@@ -1281,6 +1676,7 @@ function resetAll() {
   clearTimers(); closeDialog(); NaviHelper.cancelRoute(); Server.stop(); clearSaved();
   S.awaiting = null; S.pending = null; S.queue = [];
   $('#sys-notify').innerHTML = '';
+  Web.newTrip();
   go('home');
 }
 
@@ -1317,7 +1713,11 @@ document.addEventListener('click', (e) => {
   const tab = e.target.closest('[data-tab]');
   if (tab) { setTab(tab.dataset.tab); return; }
   const q = e.target.closest('.qchip');
-  if (q) { sendQuick(q.textContent); return; }
+  if (q) { sendQuick(q.dataset.quick); return; }
+  const sl = e.target.closest('[data-slide]');
+  if (sl) { WM.slide(sl.dataset.slide === 'out'); return; }
+  const z = e.target.closest('[data-zoom]');
+  if (z) { NavView.setZoom(z.dataset.zoom === 'in' ? 1 : -1); return; }
   const fb = e.target.closest('[data-feed]');
   if (fb) {
     const [id, i] = fb.dataset.feed.split(':').map(Number);
@@ -1359,7 +1759,6 @@ const seg = (sel, attr, fn) => $(sel).addEventListener('click', (e) => {
   fn(b.getAttribute(attr));
 });
 seg('#demo-speed', 'data-speed', (v) => { Nav.speedMul = +v; S.speedMul = +v; });
-seg('#demo-window', 'data-win', (v) => { WM.mode = v; WM.navFront = false; WM.apply(); });
 seg('#demo-theme', 'data-theme', (v) => { $('#stage').dataset.theme = v; NavView.setup(); NavView.frame(); });
 $('#demo-auto').addEventListener('change', (e) => (S.auto = e.target.checked));
 $('#demo-park').addEventListener('change', (e) => { Nav.parkLock = e.target.checked; });
@@ -1372,13 +1771,12 @@ $('#demo-online').addEventListener('change', (e) => {
 $('#demo').addEventListener('click', (e) => {
   const sd = e.target.closest('[data-sysdemo]');
   if (sd) {
-    if (sd.dataset.sysdemo === 'swap') { WM.swapped = !WM.swapped; }
-    if (sd.dataset.sysdemo === 'bg') {
-      if (WM.mode === 'split') { WM.mode = 'full'; WM.navFront = true; } else WM.navFront = !WM.navFront;
-      $$('#demo-window button').forEach((x) => x.classList.toggle('on', x.dataset.win === WM.mode));
-      sd.textContent = WM.navFront ? '앱 다시 보기' : '앱 숨기기';
+    if (sd.dataset.sysdemo === 'swap') {
+      WM.collapsed = false;
+      WM.swapped = !WM.swapped;
+      WM.apply();
     }
-    WM.apply();
+    if (sd.dataset.sysdemo === 'slide') WM.slide(!WM.collapsed);
     return;
   }
   const v = e.target.closest('[data-voice]');
@@ -1393,12 +1791,13 @@ $('#demo').addEventListener('click', (e) => {
     case 'change': if (need()) Server.deliver({ type: 'planChange' }); break;
     case 'arrive': if (need() && Nav.route && !Nav.arrived) { Nav.waypoints.forEach((w) => w && (w.passed = true)); Nav.running = true; Nav.progress = 1; Nav.tick(0.0001); Nav.report(); } break;
     case 'reset': resetAll(); break;
+    case 'web-reset': Web.leave(); if (View.mode === 'car') View.set('both'); break;
     default:
   }
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.target.tagName === 'TEXTAREA') return;
+  if (['TEXTAREA', 'INPUT'].includes(e.target.tagName)) return;
   if (e.key === 'v' || e.key === 'V') GleoAI.say('yes');
   if (e.key === 'd' || e.key === 'D') $('#demo').style.display = $('#demo').style.display === 'none' ? '' : 'none';
 });
@@ -1409,7 +1808,7 @@ document.addEventListener('keydown', (e) => {
 $$('[data-logo]').forEach((n) => (n.innerHTML = LOGO));
 $$('[data-qr]').forEach((n) => (n.innerHTML = qrSVG(+n.dataset.qr)));
 hydrateIcons();
-fit();
+View.set(View.mode);
 
 CarUxRestrictionsManager.registerListener(onUxRestrictionsChanged);
 Server.connect(onServer);
@@ -1424,10 +1823,12 @@ setInterval(() => {
   lastTs = now;
   CarUxRestrictionsManager._set(!!(Nav.route && Nav.moving()));
 }, 100);
-setInterval(() => { Nav.report(); NavView.text(); SysChrome.update(); }, 1000);
+setInterval(() => { Nav.report(); NavView.text(); SysChrome.update(); Web.tick(); }, 1000);
 (function navLoop() { NavView.frame(); requestAnimationFrame(navLoop); })();
 
 SysChrome.update();
+NavView.setZoom(0);
+NavView.setup();
 WM.apply();
 App.onStart();
 go('home');
