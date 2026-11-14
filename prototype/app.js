@@ -112,7 +112,14 @@ const POI_DB = {
   cvs1: { name: 'GS25 초당점', addr: '강원 강릉시 초당동', km: 0.6, min: 2, extra: 6 },
   cvs2: { name: '스타벅스 경포점', addr: '강원 강릉시 경포로', km: 1.1, min: 3, extra: 10 },
   cvs3: { name: '초당 공영화장실', addr: '강원 강릉시 초당동', km: 0.4, min: 1, extra: 5 },
+  gangmun: { name: '강문해변', addr: '강원 강릉시 창해로 340', km: 2.2, min: 7, route: 2, lat: 37.7956, lon: 128.9187 },
+  ojukheon: { name: '오죽헌', addr: '강원 강릉시 율곡로3139번길 24', km: 6.8, min: 15, route: 0, lat: 37.7792, lon: 128.8781 },
+  jungang: { name: '강릉 중앙시장', addr: '강원 강릉시 금성로 21', km: 3.6, min: 11, route: 3, lat: 37.7545, lon: 128.8992 },
+  terarosa: { name: '테라로사 커피공장', addr: '강원 강릉시 구정면 현천길 25', km: 9.5, min: 18, route: 1, lat: 37.6971, lon: 128.8907 },
+  seongyojang: { name: '선교장', addr: '강원 강릉시 운정길 63', km: 5.1, min: 13, route: 2, lat: 37.7856, lon: 128.8857 },
+  jumunjin: { name: '주문진 수산시장', addr: '강원 강릉시 주문진읍 시장길 35', km: 18, min: 26, route: 0, lat: 37.8915, lon: 128.8261 },
 };
+const ADD_CANDIDATES = ['gangmun', 'ojukheon', 'jungang', 'terarosa', 'seongyojang', 'jumunjin', 'gyeongpo', 'anmok'];
 const KNOWN = [
   { keys: ['안목'], poi: 'anmok' },
   { keys: ['순두부'], ask: '비슷한 장소가 3곳 있어요', candidates: [['chodang1', '평점 4.6 · 대기 15분'], ['chodang2', '대기 40분'], ['chodang3', '주차 후 도보']] },
@@ -466,8 +473,9 @@ function onUxRestrictionsChanged(r) {
   $('#app').classList.toggle('no-setup', hasFlag(UX.NO_SETUP));
   if (S.driving && S.game) S.abortGame = true;
   if (S.driving && $('#dialog-root .dlg[data-parked]')) closeDialog();
+  if (hasFlag(UX.NO_SETUP) && S.planEdit) { S.planEdit = null; SystemUI.toast('주행을 시작해 일정 편집을 닫았어요', 'lock'); }
   updateParkedOnly();
-  if (S.screen === 'trip') { renderPlanList(); renderGame(); renderFeed(); renderDest(); }
+  if (S.screen === 'trip') { renderPlanList(); renderGame(); renderFeed(); renderDest(); renderQuick(); }
 }
 
 function updateParkedOnly() {
@@ -533,7 +541,7 @@ function onVoice(intent) {
   }
   if (S.screen !== 'trip') { SystemUI.toast('여정을 시작하면 쓸 수 있어요', 'mic'); return; }
   if (intent === 'next') nextLegRequest();
-  if (intent === 'late') sendQuick('조금 늦어요');
+  if (intent === 'late') sendQuick('조금 늦어요', true);
 }
 
 /* =========================================================
@@ -699,7 +707,7 @@ function openTrip(restore) {
   clearTimers();
   go('trip');
   S.cars = {}; S.carsAt = 0; S.waypoints = []; S.arrived = false; S.awaiting = null; S.pending = null;
-  S.fired = new Set(); S.game = null; S.routeAcks = {};
+  S.fired = new Set(); S.game = null; S.routeAcks = {}; S.planEdit = null;
   if (restore) {
     Object.assign(S, { stops: restore.stops, leg: restore.leg, tab: restore.tab || 'cars', feed: restore.feed || [], stats: restore.stats, gameResults: restore.gameResults || [], share: restore.share !== false });
     S.unread = 0;
@@ -933,7 +941,8 @@ function incomingStop(car, msg) {
 }
 
 /* ---------- 메세지 (오프라인 시 대기열) */
-function sendQuick(text) {
+function sendQuick(text, viaVoice = false) {
+  if (S.driving && !viaVoice) { SystemUI.toast('주행 중에는 음성으로 보내 주세요', 'mic'); return; }
   S.stats.msgs++;
   const ok = Server.send({ type: 'msg', text });
   pushFeed({ ic: 'msg', color: '#5b9dff', title: '나 → 일행 전체', text: `“${text}”`, state: ok ? null : { ok: false, text: '전송 대기 중' } });
@@ -1206,18 +1215,87 @@ function renderFeed() {
     </div>`).join('') + (lim && S.feed.length > 3 ? `<div class="limit-note">${icon('lock')}주행 중에는 최근 알림 3개만 보여요</div>` : '');
 }
 
+/* ---------- 일정 편집 (차량: 정차 중에만 · 동승자 웹: 언제나) */
+const PlanEdit = {
+  start() { return { draft: S.stops.slice(S.leg + 1).map((s) => ({ ...s })), adding: false }; },
+  sync(ed) {
+    const fixed = new Set(S.stops.slice(0, S.leg + 1).map((s) => s.id));
+    ed.draft = ed.draft.filter((s) => !fixed.has(s.id));
+  },
+  move(ed, from, to) { const [m] = ed.draft.splice(from, 1); ed.draft.splice(to, 0, m); },
+  add(ed, poiId) { ed.draft.push({ id: `a${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`, ...poiPlace(poiId), added: true }); ed.adding = false; },
+  remove(ed, id) { ed.draft = ed.draft.filter((s) => s.id !== id || !s.added); },
+  candidates(ed, q = '') {
+    const used = new Set([...S.stops.slice(0, S.leg + 1), ...ed.draft].map((s) => s.poiId));
+    return ADD_CANDIDATES.filter((id) => !used.has(id) && (!q || POI_DB[id].name.includes(q) || POI_DB[id].addr.includes(q)));
+  },
+  /* 편집하는 동안 다음 일정으로 넘어갔다면 이미 지나간 목적지는 초안에서 뺌 */
+  apply(ed, by) {
+    this.sync(ed);
+    const draft = ed.draft;
+    const before = S.stops.slice(S.leg + 1);
+    const added = draft.filter((s) => s.added);
+    const keptIds = draft.filter((s) => !s.added).map((s) => s.id).join();
+    const reordered = keptIds !== before.filter((b) => draft.some((s) => s.id === b.id)).map((b) => b.id).join();
+    if (!added.length && !reordered) return false;
+    const text = [reordered && '순서 변경', added.length && `${added.map((a) => a.name).join(', ')} 추가`].filter(Boolean).join(' · ');
+    S.stops = [...S.stops.slice(0, S.leg + 1), ...draft.map(({ added: _a, ...s }) => s)];
+    S.stats.changes++;
+    const next = S.stops[S.leg + 1];
+    if (by.web) {
+      pushFeed({ ic: 'sync', color: by.car.color, title: `일정 변경 · ${by.car.label} ${by.name} (동승자 웹)`, text });
+      SystemUI.notify({ type: 'profile', color: by.car.color, name: by.name, key: 'plan', title: `${by.name}님이 일정을 바꿨어요`, desc: limit(next ? `${text} · 다음 ${next.name}` : text, 34), ms: 6000 });
+      if (S.planEdit) { S.planEdit = null; SystemUI.toast('동승자가 일정을 바꿔 편집을 닫았어요', 'sync'); }
+    } else {
+      pushFeed({ ic: 'sync', color: CARS[0].color, title: '일정 변경 · 나(호스트)', text });
+      SystemUI.toast('일정을 바꿨어요 · 일행에게 동기화', 'sync');
+    }
+    Server.send({ type: 'plan', stops: S.stops.map((s) => s.poiId) });
+    chatPush({ sys: true, text: `${by.web ? by.name : CARS[0].driver}님이 일정을 바꿨어요 · ${text}` });
+    renderPlanList(); renderDest();
+    Web.onPlanChanged(by, text);
+    save();
+    return true;
+  },
+};
+
 function renderPlanList() {
   if (S.screen !== 'trip') return;
   const locked = hasFlag(UX.NO_SETUP);
-  $('#pane-plan').innerHTML = `
-    <div class="plan-note ${locked ? 'lock' : ''}">${icon(locked ? 'lock' : 'sync')}${locked ? '주행 중에는 순서를 바꿀 수 없어요' : '손잡이를 끌어 순서를 바꿔요 · 일행에 동기화'}</div>
-    <div class="stop-list" id="stop-list" style="display:flex;flex-direction:column;gap:14px">
-      ${S.stops.map((s, i) => {
-        const st = i < S.leg ? 'done' : i === S.leg ? 'current' : 'next';
-        const right = st === 'next' && !locked ? `<span class="s-handle" data-handle="${i}">${icon('drag')}순서</span>` : `<span class="s-state">${st === 'done' ? '완료' : st === 'current' ? '이동 중' : ''}</span>`;
-        return `<div class="stop ${st}" data-idx="${i}"><span class="s-num">${i < S.leg ? '✓' : i + 1}</span><div class="s-main"><div class="s-name">${s.name}</div><div class="s-meta">${limit(s.addr)} · ${fmtKm(s.km)}</div></div>${right}</div>`;
-      }).join('')}
-    </div>`;
+  const ed = S.planEdit;
+  if (ed) PlanEdit.sync(ed);
+  const fixed = S.stops.slice(0, S.leg + 1);
+  const row = (s, i, st, right) => `<div class="stop ${st} ${s.added ? 'added' : ''}" ${st === 'move' ? 'data-di' : ''}><span class="s-num">${i < S.leg ? '✓' : i + 1}</span><div class="s-main"><div class="s-name">${s.name}${s.added ? '<span class="s-new">새로 추가</span>' : ''}</div><div class="s-meta">${limit(s.addr)} · ${fmtKm(s.km)}</div></div>${right}</div>`;
+  const state = (i) => `<span class="s-state">${i < S.leg ? '완료' : i === S.leg ? '이동 중' : ''}</span>`;
+  let head, list, foot = '';
+  if (!ed) {
+    head = `<div class="plan-note ${locked ? 'lock' : ''}">${icon(locked ? 'lock' : 'sync')}${locked ? '주행 중에는 일정을 바꿀 수 없어요' : '바꾼 일정은 일행과 동승자 웹에 동기화돼요'}</div>
+      ${locked ? `<button class="btn ghost sm" disabled>${icon('lock')}정차 후 편집</button>` : `<button class="btn ghost sm" data-action="plan-edit">${icon('drag')}편집</button>`}`;
+    list = S.stops.map((s, i) => row(s, i, i < S.leg ? 'done' : i === S.leg ? 'current' : 'next', state(i))).join('');
+  } else {
+    head = `<div class="plan-note">${icon('drag')}손잡이를 끌어 순서를 바꿔요</div>
+      <div class="plan-btns"><button class="btn ghost sm" data-action="plan-cancel">취소</button><button class="btn primary sm" data-action="plan-done">${icon('check')}완료</button></div>`;
+    list = fixed.map((s, i) => row(s, i, i < S.leg ? 'done' : 'current', state(i))).join('')
+      + ed.draft.map((s, j) => row(s, S.leg + 1 + j, 'move', `${s.added ? `<button class="s-remove" data-rmstop="${s.id}" aria-label="빼기">${icon('x')}</button>` : ''}<span class="s-handle" data-handle>${icon('drag')}순서</span>`)).join('');
+    const cands = PlanEdit.candidates(ed);
+    foot = ed.adding
+      ? `<div class="add-panel"><div class="add-head"><b>추가할 목적지</b><button class="btn ghost sm" data-action="plan-add">닫기</button></div>
+          <div class="add-cands">${cands.length ? cands.map((id) => `<button data-addpoi="${id}">${icon('pin')}<div><b>${POI_DB[id].name}</b><span>${POI_DB[id].addr}</span></div>${icon('plus')}</button>`).join('') : '<div class="empty">추가할 수 있는 장소가 없어요</div>'}</div></div>`
+      : `<button class="add-stop" data-action="plan-add">${icon('plus')}목적지 추가</button>`;
+  }
+  $('#pane-plan').innerHTML = `<div class="plan-head">${head}</div>
+    <div class="stop-list" id="stop-list" style="display:flex;flex-direction:column;gap:14px">${list}</div>${foot}`;
+}
+
+function setPlanEdit(on) {
+  if (on && hasFlag(UX.NO_SETUP)) { SystemUI.toast('정차 중에만 일정을 바꿀 수 있어요', 'lock'); return; }
+  S.planEdit = on ? PlanEdit.start() : null;
+  renderPlanList();
+}
+function finishPlanEdit() {
+  const ed = S.planEdit;
+  S.planEdit = null;
+  if (!ed || !PlanEdit.apply(ed, { web: false })) renderPlanList();
 }
 
 function renderGame() {
@@ -1232,20 +1310,22 @@ function renderGame() {
       </div>${results}`;
 }
 
-function renderQuick() { $('#quick-chips').innerHTML = QUICK.map((q) => `<button class="qchip" data-quick="${q}">${icon('msg')}${q}</button>`).join(''); }
+function renderQuick() {
+  $('#quick-chips').innerHTML = S.driving
+    ? `<div class="locked">${icon('lock')}<b>주행 중에는 간편 메세지를 보낼 수 없어요</b><span>“늦는다고 보내줘”처럼 음성으로 보내 주세요</span></div>`
+    : QUICK.map((q) => `<button class="qchip" data-quick="${q}">${icon('msg')}${q}</button>`).join('');
+}
 
-/* ---------- 일정 드래그 (정차 중) */
-function startDrag(e, handle) {
-  if (hasFlag(UX.NO_SETUP)) return;
+/* ---------- 목록 드래그 정렬 (차량 · 동승자 웹 공용). items는 움직일 수 있는 항목만 */
+function dragSort(e, handle, items, gap, onDrop) {
   e.preventDefault();
-  const scale = S.scale;
-  const list = $('#stop-list');
-  const item = handle.closest('.stop');
-  const from = +item.dataset.idx;
-  const items = $$('.stop', list);
+  const item = items.find((n) => n.contains(handle));
+  if (!item) return;
+  const from = items.indexOf(item);
   const rects = items.map((n) => n.getBoundingClientRect());
+  const scale = rects[from].height / (item.offsetHeight || 1);
   const startY = e.clientY;
-  const h = rects[from].height + 14 * scale;
+  const h = rects[from].height + gap * scale;
   let to = from;
   item.classList.add('dragging');
   items.forEach((n, i) => i !== from && n.classList.add('shifting'));
@@ -1255,7 +1335,7 @@ function startDrag(e, handle) {
     item.style.transform = `translateY(${dy / scale}px)`;
     const centerY = rects[from].top + rects[from].height / 2 + dy;
     to = from;
-    for (let i = S.leg + 1; i < items.length; i++) {
+    for (let i = 0; i < items.length; i++) {
       const mid = rects[i].top + rects[i].height / 2;
       if (i < from && centerY < mid) { to = i; break; }
       if (i > from && centerY > mid) to = i;
@@ -1272,7 +1352,7 @@ function startDrag(e, handle) {
     handle.removeEventListener('pointermove', move);
     handle.removeEventListener('pointerup', up);
     handle.removeEventListener('pointercancel', up);
-    if (to !== from) reorderStop(from, to, '나(호스트)'); else renderPlanList();
+    onDrop(from, to);
   };
   handle.addEventListener('pointermove', move);
   handle.addEventListener('pointerup', up);
@@ -1296,7 +1376,8 @@ const DRAW_NAMES = ['민준', '지은', '하은', '서연', '도윤', '지훈', 
 
 const Web = {
   me: null, car: null, pick: null, tab: 'cars', reqs: [], seq: 0, unread: 0,
-  reason: null, place: null, game: null, shown: null, stopSig: '', toastT: null,
+  reason: null, place: null, game: null, shown: null, stopSig: '', planSig: '', toastT: null,
+  plan: null, planQ: '',
 
   view() {
     if (!this.me) return 'join';
@@ -1313,7 +1394,7 @@ const Web = {
     $$('#phone .ph-view').forEach((n) => n.classList.toggle('on', n.id === `ph-${v}`));
     if (v === 'join') this.renderJoin();
     else if (v === 'wait') this.renderWait();
-    else { this.renderHead(); this.renderCars(); this.renderStop(); this.renderChat(); this.renderGame(); }
+    else { this.renderHead(); this.renderCars(); this.renderPlan(); this.renderStop(); this.renderChat(); this.renderGame(); }
   },
   tick() {
     if (this.view() !== this.shown) { this.render(); return; }
@@ -1322,6 +1403,8 @@ const Web = {
     if (this.tab === 'cars') this.renderCars();
     const sig = [S.leg, !!S.awaiting, S.arrived, !!Nav.route, S.waypoints.filter((w) => !w.passed).map((w) => w.name).join()].join('|');
     if (sig !== this.stopSig) { this.stopSig = sig; this.renderStop(); }
+    const psig = `${S.leg}|${S.stops.map((s) => s.id).join()}`;
+    if (psig !== this.planSig) { this.planSig = psig; this.renderPlan(); }
   },
   setTab(t) {
     this.tab = t;
@@ -1330,6 +1413,7 @@ const Web = {
     if (t === 'chat') { this.unread = 0; this.badge(); this.renderChat(); }
     if (t === 'stop') this.renderStop();
     if (t === 'cars') this.renderCars();
+    if (t === 'plan') this.renderPlan();
   },
   badge() { const b = $('#ph-chat-badge'); b.textContent = this.unread; b.classList.toggle('show', this.unread > 0); },
   toast(title, text, chip) {
@@ -1431,6 +1515,63 @@ const Web = {
           <div class="pc-car-eta ${arrived ? 'arrived' : late ? 'late' : ''}"><b>${arrived ? '도착' : hm(info.etaMin)}</b><span>${arrived ? '목적지' : `${fmtMin(info.etaMin)} 남음`}</span></div>
         </div>`;
       }).join('')}`;
+  },
+
+  /* 일정 (보기 · 편집: 순서 바꾸기, 목적지 추가) */
+  renderPlan() {
+    if (!this.car || S.screen !== 'trip') return;
+    const ed = this.plan;
+    if (ed) PlanEdit.sync(ed);
+    const fixed = S.stops.slice(0, S.leg + 1);
+    const row = (s, i, st, right) => `<div class="pp-stop ${st} ${s.added ? 'added' : ''}" ${st === 'move' ? 'data-di' : ''}>
+      <span class="pp-num">${i < S.leg ? icon('check') : i + 1}</span>
+      <div class="pp-main"><b>${s.name}${s.added ? '<em>새로 추가</em>' : ''}</b><span>${s.addr} · ${fmtKm(s.km)}</span></div>${right}</div>`;
+    const tag = (i) => (i < S.leg ? '<i class="pp-tag done">완료</i>' : i === S.leg ? '<i class="pp-tag cur">이동 중</i>' : '<i class="pp-tag">예정</i>');
+    let h = `<div class="pp-head"><div><b>여행 일정</b><span>${S.stops.length}곳 · ${S.leg + 1}번째 목적지${S.arrived ? ' 도착' : '로 가는 중'}</span></div>
+      ${ed ? '<div class="pp-btns"><button data-pedit="cancel">취소</button><button class="on" data-pedit="done">완료</button></div>' : '<button class="pp-edit" data-pedit="edit">편집</button>'}</div>`;
+    if (ed) h += `<div class="pp-note">${icon('drag')}손잡이를 끌어 순서를 바꿔요 · 지난 일정과 현재 목적지는 고정</div>`;
+    h += '<div class="pp-list" id="pp-plan-list">';
+    h += ed
+      ? fixed.map((s, i) => row(s, i, i < S.leg ? 'done' : 'cur', `<span class="pp-lock">${icon('lock')}</span>`)).join('')
+        + ed.draft.map((s, j) => row(s, S.leg + 1 + j, 'move', `${s.added ? `<button class="pp-rm" data-prm="${s.id}" aria-label="빼기">${icon('x')}</button>` : ''}<span class="pp-handle" data-pdrag>${icon('drag')}</span>`)).join('')
+      : S.stops.map((s, i) => row(s, i, i < S.leg ? 'done' : i === S.leg ? 'cur' : 'next', tag(i))).join('');
+    h += '</div>';
+    if (ed) {
+      h += ed.adding
+        ? `<div class="pp-addbox"><div class="pp-search">${icon('pin')}<input id="pp-q" placeholder="장소 이름 검색" value="${esc(this.planQ)}" autocomplete="off"><button data-padd>닫기</button></div><div class="pp-cands" id="pp-cands">${this.candHtml()}</div></div>`
+        : `<button class="pp-add" data-padd>${icon('plus')}목적지 추가</button>`;
+    } else {
+      h += '<div class="ps-note">편집하면 운전자 화면에 알림이 가고 일행 내비에 반영돼요</div>';
+    }
+    $('#pp-plan').innerHTML = h;
+  },
+  candHtml() {
+    const c = PlanEdit.candidates(this.plan, this.planQ.trim());
+    return c.length
+      ? c.map((id) => `<button data-ppoi="${id}"><div><b>${POI_DB[id].name}</b><span>${POI_DB[id].addr} · ${fmtKm(POI_DB[id].km)}</span></div>${icon('plus')}</button>`).join('')
+      : '<div class="p-empty">검색 결과가 없어요</div>';
+  },
+  planAction(act) {
+    if (act === 'edit') { this.plan = PlanEdit.start(); this.planQ = ''; }
+    if (act === 'cancel') this.plan = null;
+    if (act === 'done') {
+      const ed = this.plan;
+      this.plan = null;
+      if (ed && PlanEdit.apply(ed, { web: true, name: this.me, car: this.car })) return;
+      this.toast('바뀐 내용이 없어요', '일정은 그대로예요', { color: '#868d99', html: icon('list') });
+    }
+    this.renderPlan();
+  },
+  onPlanChanged(by, text) {
+    if (this.view() !== 'main') return;
+    if (by.web && by.name === this.me) {
+      this.toast('일정을 바꿨어요', `운전자에게 알렸어요 · ${text}`, { color: '#11935e', html: icon('check') });
+    } else {
+      this.plan = null;
+      const who = by.web ? `${by.car.label} ${by.name}` : `운전자 ${CARS[0].driver}`;
+      this.toast(`${who}님이 일정을 바꿨어요`, text, { color: by.web ? by.car.color : CARS[0].color, html: icon('sync') });
+    }
+    this.renderPlan();
   },
 
   /* 정차 요청 */
@@ -1575,6 +1716,19 @@ const Web = {
 $('#phone').addEventListener('click', (e) => {
   const t = e.target.closest('[data-ptab]');
   if (t) { Web.setTab(t.dataset.ptab); return; }
+  const pe = e.target.closest('[data-pedit]');
+  if (pe) { Web.planAction(pe.dataset.pedit); return; }
+  if (Web.plan) {
+    if (e.target.closest('[data-padd]')) {
+      Web.plan.adding = !Web.plan.adding; Web.planQ = '';
+      Web.renderPlan();
+      return;
+    }
+    const pp = e.target.closest('[data-ppoi]');
+    if (pp) { PlanEdit.add(Web.plan, pp.dataset.ppoi); Web.renderPlan(); return; }
+    const pr = e.target.closest('[data-prm]');
+    if (pr) { PlanEdit.remove(Web.plan, pr.dataset.prm); Web.renderPlan(); return; }
+  }
   const n = e.target.closest('[data-pname]');
   if (n) { Web.pick = n.dataset.pname; Web.renderJoin(); return; }
   const a = e.target.closest('[data-pact]');
@@ -1587,6 +1741,11 @@ $('#phone').addEventListener('click', (e) => {
   if (q) { Web.sendChat(q.dataset.pq); return; }
   const g = e.target.closest('[data-pgame]');
   if (g) Web.playGame(g.dataset.pgame);
+});
+$('#phone').addEventListener('input', (e) => {
+  if (e.target.id !== 'pp-q' || !Web.plan) return;
+  Web.planQ = e.target.value;
+  $('#pp-cands').innerHTML = Web.candHtml();
 });
 $('#pc-form').addEventListener('submit', (e) => {
   e.preventDefault();
@@ -1699,6 +1858,10 @@ const ACTIONS = {
   'consent-no': () => { S.share = false; openTrip(null); SystemUI.toast('위치 공유 없이 시작해요', 'shield'); },
   'next-leg': nextLegRequest,
   'show-invite': showInvite,
+  'plan-edit': () => setPlanEdit(true),
+  'plan-cancel': () => setPlanEdit(false),
+  'plan-done': finishPlanEdit,
+  'plan-add': () => { if (S.planEdit) { S.planEdit.adding = !S.planEdit.adding; renderPlanList(); } },
 };
 
 document.addEventListener('click', (e) => {
@@ -1718,6 +1881,10 @@ document.addEventListener('click', (e) => {
   if (sl) { WM.slide(sl.dataset.slide === 'out'); return; }
   const z = e.target.closest('[data-zoom]');
   if (z) { NavView.setZoom(z.dataset.zoom === 'in' ? 1 : -1); return; }
+  const ap = e.target.closest('[data-addpoi]');
+  if (ap && S.planEdit) { PlanEdit.add(S.planEdit, ap.dataset.addpoi); renderPlanList(); return; }
+  const rm = e.target.closest('[data-rmstop]');
+  if (rm && S.planEdit) { PlanEdit.remove(S.planEdit, rm.dataset.rmstop); renderPlanList(); return; }
   const fb = e.target.closest('[data-feed]');
   if (fb) {
     const [id, i] = fb.dataset.feed.split(':').map(Number);
@@ -1730,8 +1897,16 @@ document.addEventListener('click', (e) => {
 });
 
 document.addEventListener('pointerdown', (e) => {
-  const h = e.target.closest('[data-handle]');
-  if (h) { startDrag(e, h); return; }
+  const h = e.target.closest('#stage [data-handle]');
+  if (h && S.planEdit) {
+    dragSort(e, h, $$('#stop-list .stop[data-di]'), 14, (from, to) => { if (S.planEdit) PlanEdit.move(S.planEdit, from, to); renderPlanList(); });
+    return;
+  }
+  const ph = e.target.closest('#phone [data-pdrag]');
+  if (ph && Web.plan) {
+    dragSort(e, ph, $$('#pp-plan-list .pp-stop[data-di]'), 8, (from, to) => { if (Web.plan) PlanEdit.move(Web.plan, from, to); Web.renderPlan(); });
+    return;
+  }
   if (e.target.closest('#stage button') && navigator.vibrate) navigator.vibrate(8);
 });
 

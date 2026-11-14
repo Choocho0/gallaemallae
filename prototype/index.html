@@ -196,7 +196,7 @@
                 <button data-tab="feed"><i data-icon="bell"></i>알림<span class="badge" id="feed-badge"></span></button>
                 <button data-tab="plan"><i data-icon="list"></i>일정</button>
                 <button data-tab="game"><i data-icon="game"></i>게임<i data-icon="lock" class="tab-lock"></i></button>
-                <button data-tab="quick"><i data-icon="msg"></i>간편 메세지<span class="badge" id="queue-badge"></span></button>
+                <button data-tab="quick"><i data-icon="msg"></i>간편 메세지<i data-icon="lock" class="tab-lock"></i><span class="badge" id="queue-badge"></span></button>
               </nav>
               <div class="tab-body">
                 <div class="tab-pane scroll on" data-pane="cars" id="pane-cars"></div>
@@ -296,6 +296,7 @@
           <header class="ph-head" id="ph-head"></header>
           <div class="ph-panes">
             <div class="ph-pane on" data-ppane="cars" id="pp-cars"></div>
+            <div class="ph-pane" data-ppane="plan" id="pp-plan"></div>
             <div class="ph-pane" data-ppane="stop" id="pp-stop"></div>
             <div class="ph-pane chat" data-ppane="chat">
               <div class="pc-list" id="pc-list"></div>
@@ -311,6 +312,7 @@
           </div>
           <nav class="ph-tabs">
             <button data-ptab="cars" class="on"><i data-icon="car"></i>일행</button>
+            <button data-ptab="plan"><i data-icon="list"></i>일정</button>
             <button data-ptab="stop"><i data-icon="rest"></i>정차 요청</button>
             <button data-ptab="chat"><i data-icon="msg"></i>메세지<b class="ph-badge" id="ph-chat-badge"></b></button>
             <button data-ptab="game"><i data-icon="game"></i>게임</button>

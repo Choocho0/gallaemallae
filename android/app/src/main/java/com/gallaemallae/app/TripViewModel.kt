@@ -283,7 +283,7 @@ class TripViewModel(app: Application) : AndroidViewModel(app), NaviEvents {
                     toast("여정을 시작하면 쓸 수 있어요")
                     return
                 }
-                if (intent == VoiceIntent.NEXT) nextLegRequest() else sendQuick("조금 늦어요")
+                if (intent == VoiceIntent.NEXT) nextLegRequest() else sendQuick("조금 늦어요", viaVoice = true)
             }
         }
     }
@@ -739,7 +739,11 @@ class TripViewModel(app: Application) : AndroidViewModel(app), NaviEvents {
     }
 
     // ---------- 메세지 (오프라인이면 대기열)
-    fun sendQuick(text: String) {
+    fun sendQuick(text: String, viaVoice: Boolean = false) {
+        if (ux.driving && !viaVoice) {
+            toast("주행 중에는 음성으로 보내 주세요")
+            return
+        }
         stats = stats.copy(msgs = stats.msgs + 1)
         val ok = server.send(Outbound.Msg(text))
         val item = pushFeed("msg", Tone.INFO, "나 → 일행 전체", "“$text”", state = if (ok) null else FeedState(false, "전송 대기 중"), countUnread = false)

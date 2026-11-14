@@ -164,7 +164,18 @@ private fun Metric(label: String, value: String, modifier: Modifier, big: Boolea
 private fun QuickChips(vm: TripViewModel) {
     val c = Th.c
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        if (vm.ux.driving) {
+            Row2(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(Radius.md)).background(c.surfacePrimary).padding(horizontal = 30.dp, vertical = 20.dp),
+                16.dp,
+            ) {
+                Ico(GIcons.lock, 36.dp, c.textTertiary)
+                Column(Modifier.weight(1f)) {
+                    Txt("주행 중에는 간편 메세지를 보낼 수 없어요", Type.label, weight = FontWeight.Bold)
+                    Txt("“늦는다고 보내줘”처럼 음성으로 보내 주세요", Type.caption, c.textSecondary)
+                }
+            }
+        } else Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             SampleData.QUICK.forEach { q ->
                 Press({ vm.sendQuick(q) }, shape = RoundedCornerShape(999.dp), color = c.surfacePrimary, pressedColor = c.surfaceTertiary) {
                     Txt(q, Type.label, weight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 30.dp, vertical = 20.dp))
